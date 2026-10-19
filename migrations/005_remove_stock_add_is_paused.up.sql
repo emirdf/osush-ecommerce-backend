@@ -1,0 +1,5 @@
+ALTER TABLE products
+DROP COLUMN "stock";
+
+ALTER TABLE products
+ADD COLUMN "is_paused" BOOLEAN DEFAULT FALSE;

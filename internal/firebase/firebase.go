@@ -1,0 +1,101 @@
+package firebase
+
+import (
+	"context"
+	"fmt"
+	"osush/internal/handlers/request"
+
+	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/messaging"
+	"google.golang.org/api/option"
+)
+
+type FirebaseService struct {
+	client *messaging.Client
+}
+
+func NewFirebaseService(ctx context.Context) (*FirebaseService, error) {
+	app, err := firebase.NewApp(
+		ctx,
+		nil,
+		option.WithCredentialsFile(
+			"internal/credentials/osushecommerce-firebase-adminsdk-fbsvc-c8f00caf54.json",
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to initialize firebase app: %w",
+			err,
+		)
+	}
+
+	client, err := app.Messaging(ctx)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to initialize firebase messaging: %w",
+			err,
+		)
+	}
+
+	return &FirebaseService{
+		client: client,
+	}, nil
+}
+
+func (f *FirebaseService) SendNotifications(
+	ctx context.Context,
+	deviceTokens []string,
+	title request.Dictionary,
+	body request.Dictionary,
+) error {
+
+	if len(deviceTokens) == 0 {
+		return nil
+	}
+
+	const batchSize = 500
+
+	for i := 0; i < len(deviceTokens); i += batchSize {
+
+		end := i + batchSize
+
+		if end > len(deviceTokens) {
+			end = len(deviceTokens)
+		}
+
+		tokens := deviceTokens[i:end]
+
+		message := &messaging.MulticastMessage{
+			Tokens: tokens,
+			Notification: &messaging.Notification{
+				Title: title.Tm,
+				Body:  body.Tm,
+			},
+			Data: map[string]string{
+				"title_tm": title.Tm,
+				"title_ru": title.Ru,
+				"body_tm":  body.Tm,
+				"body_ru":  body.Ru,
+			},
+		}
+
+		response, err := f.client.SendEachForMulticast(
+			ctx,
+			message,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to send notifications: %w",
+				err,
+			)
+		}
+
+		fmt.Printf(
+			"firebase notifications: success=%d failure=%d\n",
+			response.SuccessCount,
+			response.FailureCount,
+		)
+	}
+
+	return nil
+}

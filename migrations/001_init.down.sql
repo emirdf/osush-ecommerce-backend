@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS blacklist;
+
+DROP TABLE IF EXISTS subcategories;
+DROP TABLE IF EXISTS categories;
+
+DROP TABLE IF EXISTS users;
+
+DROP TABLE IF EXISTS dictionary;

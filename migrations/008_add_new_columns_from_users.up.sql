@@ -1,0 +1,4 @@
+ALTER TABLE users
+ADD COLUMN phone_number VARCHAR(50),
+ADD COLUMN avatar VARCHAR(500),
+ADD COLUMN surname VARCHAR(250);

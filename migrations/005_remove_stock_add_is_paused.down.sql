@@ -1,0 +1,5 @@
+ALTER TABLE products
+DROP COLUMN "is_paused";
+
+ALTER TABLE products
+ADD COLUMN "stock" BIGINT NOT NULL DEFAULT 0;
