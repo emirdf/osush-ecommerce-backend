@@ -3,6 +3,7 @@ package firebase
 import (
 	"context"
 	"fmt"
+	"os"
 	"osush/internal/handlers/request"
 
 	firebase "firebase.google.com/go/v4"
@@ -10,17 +11,27 @@ import (
 	"google.golang.org/api/option"
 )
 
+const credentialsFile = "internal/credentials/osushecommerce-firebase-adminsdk-fbsvc-c8f00caf54.json"
+
 type FirebaseService struct {
 	client *messaging.Client
+}
+
+// credentialsOption prefers the FIREBASE_CREDENTIALS_JSON environment variable
+// and falls back to the local, git-ignored credentials file.
+func credentialsOption() option.ClientOption {
+	if credentialsJSON := os.Getenv("FIREBASE_CREDENTIALS_JSON"); credentialsJSON != "" {
+		return option.WithCredentialsJSON([]byte(credentialsJSON))
+	}
+
+	return option.WithCredentialsFile(credentialsFile)
 }
 
 func NewFirebaseService(ctx context.Context) (*FirebaseService, error) {
 	app, err := firebase.NewApp(
 		ctx,
 		nil,
-		option.WithCredentialsFile(
-			"internal/credentials/osushecommerce-firebase-adminsdk-fbsvc-c8f00caf54.json",
-		),
+		credentialsOption(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
