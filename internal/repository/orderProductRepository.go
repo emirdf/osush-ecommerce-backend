@@ -39,7 +39,7 @@ func (r *OrderProductRepository) GetOrderProductsByOrderID(
 			op.price,
 			op.discount_price,
 			p.name,
-			img.image_path
+			COALESCE(img.image_path, '')
 		FROM order_products op
 		JOIN products p ON p.id = op.product_id
 		LEFT JOIN image_products img

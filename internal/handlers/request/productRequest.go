@@ -21,7 +21,7 @@ func (r *ProductRequest) Validate() error {
 	}
 
 	if r.SubcategoryID <= 0 {
-		return errors.New("the name must not be empty")
+		return errors.New("subcategory_id is required")
 	}
 
 	if err := validation.ValidateTextSize(r.Description.Tm, "description in tm"); err != nil {
@@ -63,7 +63,9 @@ type ProductFilter struct {
 }
 
 type UpdateProductRequest struct {
-	Name          string        `json:"name" binding:"required"`
+	Name string `json:"name" binding:"required"`
+	// SubcategoryID moves the product to another subcategory; 0 keeps the current one.
+	SubcategoryID int           `json:"subcategory_id"`
 	Description   Dictionary    `json:"description"`
 	Price         float64       `json:"price" binding:"required"`
 	DiscountPrice *float64      `json:"discount_price"`
@@ -74,6 +76,10 @@ type UpdateProductRequest struct {
 func (r *UpdateProductRequest) Validate() error {
 	if r.Name == "" {
 		return errors.New("name is required")
+	}
+
+	if r.SubcategoryID < 0 {
+		return errors.New("subcategory_id must be positive")
 	}
 
 	if err := validation.ValidateTextSize(r.Description.Tm, "description in tm"); err != nil {

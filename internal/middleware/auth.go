@@ -32,6 +32,20 @@ func AuthMiddleware(
 			return
 		}
 
+		// Tokens outlive deleted accounts (on other devices, for example).
+		exists, err := clientRepo.ExistsByID(c.Request.Context(), clientID)
+		if err != nil {
+			customError.HandleError(c, errors.New("failed to check client"))
+			c.Abort()
+			return
+		}
+
+		if !exists {
+			customError.HandleError(c, customError.ErrUnauthorized)
+			c.Abort()
+			return
+		}
+
 		c.Set("clientId", clientID)
 
 		c.Next()

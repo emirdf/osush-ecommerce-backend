@@ -26,6 +26,84 @@ func NewClientRepository(db *db.LoggedDB, logger log.Logger) *ClientRepository {
 	}
 }
 
+// DeleteClient removes a client and everything that belongs only to them in
+// one transaction. Orders are kept: the foreign key sets their client_id to
+// NULL. It returns the client's avatar path (nil when there was none) so the
+// caller can remove the file.
+func (r *ClientRepository) DeleteClient(
+	ctx context.Context,
+	clientID int,
+) (*string, error) {
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	tx, err := r.db.DB.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, errors.New("failed to begin transaction")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	cleanup := []struct {
+		name  string
+		query string
+	}{
+		{"client notifications", `
+			DELETE FROM client_notifications
+			WHERE device_token_id IN (SELECT id FROM device_tokens WHERE client_id = $1)`},
+		{"device tokens", `DELETE FROM device_tokens WHERE client_id = $1`},
+		{"basket", `DELETE FROM basket WHERE client_id = $1`},
+		{"product likes", `DELETE FROM product_likes WHERE client_id = $1`},
+	}
+
+	for _, step := range cleanup {
+		if _, err := tx.Exec(ctx, step.query, clientID); err != nil {
+			r.logger.Error("failed to delete client data",
+				log.Int("client_id", clientID),
+				log.String("table", step.name),
+				log.Error(err),
+			)
+
+			return nil, errors.New("failed to delete client")
+		}
+	}
+
+	var imagePath *string
+
+	err = tx.QueryRow(ctx,
+		`DELETE FROM clients WHERE id = $1 RETURNING image_path`,
+		clientID,
+	).Scan(&imagePath)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, customError.ErrNotFoundByID(clientID, "client")
+	}
+
+	if err != nil {
+		r.logger.Error("failed to delete client",
+			log.Int("client_id", clientID),
+			log.Error(err),
+		)
+
+		return nil, errors.New("failed to delete client")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		r.logger.Error("failed to commit client deletion",
+			log.Int("client_id", clientID),
+			log.Error(err),
+		)
+
+		return nil, errors.New("failed to delete client")
+	}
+
+	r.logger.Info("client deleted",
+		log.Int("client_id", clientID),
+	)
+
+	return imagePath, nil
+}
+
 func (r *ClientRepository) ExistsByID(ctx context.Context, id int) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()

@@ -417,6 +417,19 @@ func (u *ProductUseCase) GetProductByID(
 		Attributes:    features,
 		IsPaused:      product.IsPaused,
 		Images:        images,
+		Category: &response.ProductCategory{
+			ID:   product.CategoryID,
+			Name: product.CategoryName,
+		},
+		Subcategory: &response.ProductCategory{
+			ID:   product.SubcategoryID,
+			Name: product.SubcategoryName,
+		},
+	}
+
+	// Images are ordered cover first, the same rule the product list uses.
+	if len(images) > 0 {
+		result.Image = images[0]
 	}
 
 	u.logger.Info("product retrieved successfully",
@@ -511,13 +524,18 @@ func (u *ProductUseCase) GetProductList(
 		}
 		createdAt := product.CreatedAt.Format("02-01-2006")
 
+		var imagePath string
+		if len(productImages) > 0 {
+			imagePath = productImages[0].ImagePath
+		}
+
 		product := response.Products{
 			ID:            product.ID,
 			Name:          product.Name,
 			IsLiked:       isLiked,
 			Price:         math.Round(product.Price),
 			DiscountPrice: product.DiscountPrice,
-			Image:         productImages[0].ImagePath,
+			Image:         imagePath,
 			OrderCount:    *orderCount,
 			IsPaused:      product.IsPaused,
 			CreatedAt:     createdAt,
@@ -700,35 +718,32 @@ func (u *ProductUseCase) UpdateProduct(
 		return customError.ErrNotFoundByID(productID, "product")
 	}
 
-	oldImages, err := u.repo.GetProductImages(ctx, productID)
-	if err != nil {
-		u.logger.Error("failed to get old product images",
-			log.Int("product_id", productID),
-			log.Error(err),
-		)
-
-		return err
-	}
-
-	for _, image := range oldImages {
-
-		if err := u.minioRepo.Delete(
-			ctx,
-			image.ImagePath,
-		); err != nil {
-
-			u.logger.Error("failed to delete old product image from minio",
-				log.Int("product_id", productID),
-				log.String("image_path", image.ImagePath),
+	if req.SubcategoryID > 0 {
+		exists, err := u.subcategoryRepo.ExistsByID(ctx, req.SubcategoryID)
+		if err != nil {
+			u.logger.Error("failed to check subcategory existence",
+				log.Int("subcategory_id", req.SubcategoryID),
 				log.Error(err),
 			)
 
-			return err
+			return errors.New("failed to check subcategory existence")
+		}
+
+		if !exists {
+			u.logger.Warn("subcategory not found",
+				log.Int("subcategory_id", req.SubcategoryID),
+			)
+
+			return customError.ErrNotFoundByID(req.SubcategoryID, "subcategory")
 		}
 	}
 
-	if err := u.repo.DeleteProductImages(ctx, productID); err != nil {
-		u.logger.Error("failed to delete old product images",
+	// The request carries the product's complete new set of images. The old
+	// ones are removed only after the new ones are stored, so a failed upload
+	// never leaves the product without images.
+	oldImages, err := u.repo.GetProductImages(ctx, productID)
+	if err != nil {
+		u.logger.Error("failed to get old product images",
 			log.Int("product_id", productID),
 			log.Error(err),
 		)
@@ -773,6 +788,7 @@ func (u *ProductUseCase) UpdateProduct(
 
 	product := models.Product{
 		Name:          req.Name,
+		SubcategoryID: req.SubcategoryID,
 		DescriptionTm: req.Description.Tm,
 		DescriptionRu: req.Description.Ru,
 		Price:         req.Price,
@@ -806,11 +822,50 @@ func (u *ProductUseCase) UpdateProduct(
 		return err
 	}
 
+	u.removeOldImages(ctx, productID, oldImages)
+
 	u.logger.Info("product updated successfully",
 		log.Int("product_id", productID),
 	)
 
 	return nil
+}
+
+// removeOldImages deletes images that were replaced by an update. The new
+// images are already stored, so a failure here only leaves an orphaned file
+// and is logged instead of failing the request.
+func (u *ProductUseCase) removeOldImages(
+	ctx context.Context,
+	productID int,
+	oldImages []models.ProductImage,
+) {
+	if len(oldImages) == 0 {
+		return
+	}
+
+	ids := make([]int, 0, len(oldImages))
+	for _, image := range oldImages {
+		ids = append(ids, image.ID)
+	}
+
+	if err := u.repo.DeleteProductImagesByIDs(ctx, productID, ids); err != nil {
+		u.logger.Error("failed to delete replaced product images",
+			log.Int("product_id", productID),
+			log.Error(err),
+		)
+
+		return
+	}
+
+	for _, image := range oldImages {
+		if err := u.minioRepo.Delete(ctx, image.ImagePath); err != nil {
+			u.logger.Warn("failed to delete replaced product image from minio",
+				log.Int("product_id", productID),
+				log.String("image_path", image.ImagePath),
+				log.Error(err),
+			)
+		}
+	}
 }
 
 func (u *ProductUseCase) DeleteProduct(

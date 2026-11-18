@@ -230,7 +230,7 @@ func (r *OrderRepository) GetOrderByID(
 	query := `
 		SELECT
 			id,
-			client_id,
+			COALESCE(client_id, 0),
 			customer_name,
 			phone_number,
 			city,

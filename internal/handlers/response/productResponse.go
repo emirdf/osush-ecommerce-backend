@@ -13,7 +13,17 @@ type ProductResponse struct {
 	DiscountPrice *float64               `json:"discount_price"`
 	Attributes    *request.DictionaryMap `json:"attributes"`
 	IsPaused      bool                   `json:"is_paused"`
-	Images        []string               `json:"images"`
+	// Image is the cover; Images lists every image with the cover first.
+	Image       string           `json:"image"`
+	Images      []string         `json:"images"`
+	Category    *ProductCategory `json:"category"`
+	Subcategory *ProductCategory `json:"subcategory"`
+}
+
+// ProductCategory is the category or subcategory a product belongs to.
+type ProductCategory struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
 }
 
 type ProductListResponse struct {

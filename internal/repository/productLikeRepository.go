@@ -150,7 +150,7 @@ func (r *ProductLikeRepository) GetLikedProducts(
 			p.name,
 			p.price,
 			p.discount_price,
-			img.image_path,
+			COALESCE(img.image_path, ''),
 			COUNT(*) OVER() AS total
 		FROM product_likes pl
 		JOIN products p ON p.id = pl.product_id

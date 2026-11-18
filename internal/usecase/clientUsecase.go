@@ -415,6 +415,55 @@ func (u *ClientUseCase) Logout(
 	return nil
 }
 
+// DeleteAccount deletes the signed-in client's own account. Orders are kept
+// for the shop without the link to the client. The current token is
+// blacklisted; tokens on other devices stop working because the auth
+// middleware rejects clients that no longer exist.
+func (u *ClientUseCase) DeleteAccount(
+	ctx context.Context,
+	clientID int,
+	token string,
+) error {
+	u.logger.Info("starting client account deletion",
+		log.Int("client_id", clientID),
+	)
+
+	imagePath, err := u.repo.DeleteClient(ctx, clientID)
+	if err != nil {
+		u.logger.Error("failed to delete client account",
+			log.Int("client_id", clientID),
+			log.Error(err),
+		)
+
+		return err
+	}
+
+	// The account is gone at this point, so the steps below only tidy up and
+	// never fail the request.
+	if err := u.repo.Logout(ctx, token); err != nil {
+		u.logger.Warn("failed to blacklist token of deleted client",
+			log.Int("client_id", clientID),
+			log.Error(err),
+		)
+	}
+
+	if imagePath != nil && *imagePath != "" {
+		if err := u.minioRepo.Delete(ctx, *imagePath); err != nil {
+			u.logger.Warn("failed to delete avatar of deleted client",
+				log.Int("client_id", clientID),
+				log.String("image_path", *imagePath),
+				log.Error(err),
+			)
+		}
+	}
+
+	u.logger.Info("client account deleted",
+		log.Int("client_id", clientID),
+	)
+
+	return nil
+}
+
 func (u *ClientUseCase) GetProfile(
 	ctx context.Context,
 	clientID int,

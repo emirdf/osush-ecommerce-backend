@@ -337,6 +337,30 @@ func (h *ClientHandler) Logout(c *gin.Context) {
 	})
 }
 
+// DeleteAccount deletes the signed-in client's own account.
+func (h *ClientHandler) DeleteAccount(c *gin.Context) {
+	logger := middleware.GetLogger(c)
+	ctx := c.Request.Context()
+
+	clientID := c.MustGet("clientId").(int)
+
+	logger.Info("handling client account deletion request",
+		log.Int("client_id", clientID),
+	)
+
+	// AuthMiddleware has already checked the "Bearer <token>" format.
+	token := c.GetHeader("Authorization")[len("Bearer "):]
+
+	if err := h.clientUseCase.DeleteAccount(ctx, clientID, token); err != nil {
+		customError.HandleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "successful",
+	})
+}
+
 func (h *ClientHandler) GetProfile(c *gin.Context) {
 
 	logger := middleware.GetLogger(c)

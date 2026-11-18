@@ -281,12 +281,17 @@ func (r *ProductRepository) GetProductByID(
 			p.id,
 			p.name,
 			p.subcategory_id,
+			s.name,
+			c.id,
+			c.name,
 			p.description_dictionary_id,
 			p.price,
 			p.discount_price,
 			p.features_dictionary_id,
 			p.is_paused
 		FROM products p
+		JOIN subcategories s ON s.id = p.subcategory_id
+		JOIN categories c ON c.id = s.category_id
 		WHERE p.id = $1
 	`
 
@@ -300,6 +305,9 @@ func (r *ProductRepository) GetProductByID(
 		&product.ID,
 		&product.Name,
 		&product.SubcategoryID,
+		&product.SubcategoryName,
+		&product.CategoryID,
+		&product.CategoryName,
 		&product.DescriptionDictionaryID,
 		&product.Price,
 		&product.DiscountPrice,
@@ -466,6 +474,43 @@ func (r *ProductRepository) DeleteProductImages(
 
 	if err != nil {
 		r.logger.Error("failed to delete product images",
+			log.Int("product_id", productID),
+			log.Error(err),
+		)
+
+		return errors.New("failed to delete product images")
+	}
+
+	return nil
+}
+
+// DeleteProductImagesByIDs deletes the given image rows of one product.
+func (r *ProductRepository) DeleteProductImagesByIDs(
+	ctx context.Context,
+	productID int,
+	imageIDs []int,
+) error {
+
+	if len(imageIDs) == 0 {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	ids := make([]int64, 0, len(imageIDs))
+	for _, id := range imageIDs {
+		ids = append(ids, int64(id))
+	}
+
+	query := `
+		DELETE FROM image_products
+		WHERE product_id = $1
+			AND id = ANY($2::bigint[])
+	`
+
+	if _, err := r.db.ExecContext(ctx, query, productID, ids); err != nil {
+		r.logger.Error("failed to delete product images by ids",
 			log.Int("product_id", productID),
 			log.Error(err),
 		)
@@ -665,7 +710,7 @@ func (r *ProductRepository) GetIndexProducts(
 			p.name,
 			p.price,
 			p.discount_price,
-			img.image_path,
+			COALESCE(img.image_path, ''),
 			p.is_paused
 		FROM products p
 		LEFT JOIN image_products img
@@ -728,7 +773,7 @@ func (r *ProductRepository) GetIndexProducts(
 			p.name,
 			p.price,
 			p.discount_price,
-			img.image_path,
+			COALESCE(img.image_path, ''),
 			p.is_paused
 		FROM products p
 		LEFT JOIN image_products img
@@ -937,6 +982,7 @@ func (r *ProductRepository) UpdateProduct(
 			discount_price = $4,
 			features_dictionary_id = $5,
 			is_paused = $6,
+			subcategory_id = COALESCE(NULLIF($8::bigint, 0), subcategory_id),
 			updated_at = NOW()
 		WHERE id = $7
 	`
@@ -951,6 +997,7 @@ func (r *ProductRepository) UpdateProduct(
 		product.FeaturesDictionaryID,
 		product.IsPaused,
 		productID,
+		product.SubcategoryID,
 	)
 
 	if err != nil {

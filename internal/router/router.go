@@ -87,6 +87,11 @@ func NewRouter(cfg *config.Config, logger log.Logger, deps *RouterDeps) *gin.Eng
 			InternalMiddlewarePkg.BodySizeLimit(1*1024*1024),
 			InternalMiddlewarePkg.AuthMiddleware(cfg, deps.ClientRepository),
 			deps.ClientHandler.GetProfile)
+		client.DELETE(
+			"/delete",
+			InternalMiddlewarePkg.BodySizeLimit(1*1024*1024),
+			InternalMiddlewarePkg.AuthMiddleware(cfg, deps.ClientRepository),
+			deps.ClientHandler.DeleteAccount)
 		client.GET(
 			"/list",
 			InternalMiddlewarePkg.BodySizeLimit(1*1024*1024),

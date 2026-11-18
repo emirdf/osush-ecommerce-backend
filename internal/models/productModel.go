@@ -6,6 +6,9 @@ type Product struct {
 	ID                      int
 	Name                    string
 	SubcategoryID           int
+	SubcategoryName         string
+	CategoryID              int
+	CategoryName            string
 	DescriptionDictionaryID *int
 	DescriptionTm           string
 	DescriptionRu           string
