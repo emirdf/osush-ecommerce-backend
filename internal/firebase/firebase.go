@@ -110,3 +110,46 @@ func (f *FirebaseService) SendNotifications(
 
 	return nil
 }
+
+// SendToTokens sends one notification with custom data (e.g. route and
+// order_id so the app opens the right page on tap) to the given tokens.
+// Used for per-client pushes such as "your order has been sent".
+func (f *FirebaseService) SendToTokens(
+	ctx context.Context,
+	deviceTokens []string,
+	title string,
+	body string,
+	data map[string]string,
+) (*messaging.BatchResponse, error) {
+	if len(deviceTokens) == 0 {
+		return &messaging.BatchResponse{}, nil
+	}
+
+	message := &messaging.MulticastMessage{
+		Tokens: deviceTokens,
+		Notification: &messaging.Notification{
+			Title: title,
+			Body:  body,
+		},
+		Data: data,
+		Android: &messaging.AndroidConfig{
+			Priority: "high",
+			Notification: &messaging.AndroidNotification{
+				// Must match the channel created by the Flutter app.
+				ChannelID: "high_importance_channel",
+			},
+		},
+		APNS: &messaging.APNSConfig{
+			Payload: &messaging.APNSPayload{
+				Aps: &messaging.Aps{Sound: "default"},
+			},
+		},
+	}
+
+	response, err := f.client.SendEachForMulticast(ctx, message)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send notifications: %w", err)
+	}
+
+	return response, nil
+}

@@ -45,8 +45,8 @@ func (u *NotificationUseCase) CreateNotification(
 	notification := models.Notification{
 		TitleTm: req.Title.Tm,
 		TitleRu: req.Title.Ru,
-		BodyTm:  req.Title.Tm,
-		BodyRu:  req.Title.Ru,
+		BodyTm:  req.Body.Tm,
+		BodyRu:  req.Body.Ru,
 		Life:    req.Life,
 	}
 

@@ -653,10 +653,13 @@ func (r *OrderProductRepository) GetOrderTotals(
 	return &totalProduct, &totalPrice, nil
 }
 
+// MarkOrderAsSend sets is_send = TRUE and returns the order's client id.
+// changed is false when the order had already been marked as sent, so the
+// caller does not notify the client twice if the admin presses again.
 func (r *OrderRepository) MarkOrderAsSend(
 	ctx context.Context,
 	orderID int,
-) error {
+) (clientID int, changed bool, err error) {
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -666,15 +669,21 @@ func (r *OrderRepository) MarkOrderAsSend(
 		log.Int("order_id", orderID),
 	)
 
+	// The CTE reads the old is_send value before the update is applied.
 	query := `
-		UPDATE orders
+		WITH previous AS (
+			SELECT id, is_send FROM orders WHERE id = $1
+		)
+		UPDATE orders o
 		SET
 			is_send = TRUE,
 			updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
-		WHERE id = $1
+		FROM previous p
+		WHERE o.id = p.id
+		RETURNING o.client_id, NOT p.is_send
 	`
 
-	_, err := r.db.DB.Exec(ctx, query, orderID)
+	err = r.db.DB.QueryRow(ctx, query, orderID).Scan(&clientID, &changed)
 	if err != nil {
 		r.logger.Error(
 			"failed to mark order as sent",
@@ -682,13 +691,14 @@ func (r *OrderRepository) MarkOrderAsSend(
 			log.Error(err),
 		)
 
-		return errors.New("failed to mark order as sent")
+		return 0, false, errors.New("failed to mark order as sent")
 	}
 
 	r.logger.Debug(
 		"order marked as sent successfully",
 		log.Int("order_id", orderID),
+		log.Bool("changed", changed),
 	)
 
-	return nil
+	return clientID, changed, nil
 }

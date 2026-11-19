@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"math"
 	customError "osush/internal/errors"
+	"osush/internal/firebase"
 	"osush/internal/handlers/request"
 	"osush/internal/handlers/response"
 	"osush/internal/log"
 	"osush/internal/models"
 	"osush/internal/repository"
 	"strings"
+
+	"firebase.google.com/go/v4/messaging"
+	"time"
 )
 
 type OrderUseCase struct {
@@ -20,6 +24,8 @@ type OrderUseCase struct {
 	basketRepo       *repository.BasketRepository
 	orderProductRepo *repository.OrderProductRepository
 	productRepo      *repository.ProductRepository
+	deviceTokenRepo  *repository.DeviceTokenRepository
+	firebaseService  *firebase.FirebaseService
 	logger           log.Logger
 }
 
@@ -29,6 +35,8 @@ func NewOrderUseCase(
 	basketRepo *repository.BasketRepository,
 	orderProductRepo *repository.OrderProductRepository,
 	productRepo *repository.ProductRepository,
+	deviceTokenRepo *repository.DeviceTokenRepository,
+	firebaseService *firebase.FirebaseService,
 	logger log.Logger) *OrderUseCase {
 	return &OrderUseCase{
 		repo:             repo,
@@ -36,6 +44,8 @@ func NewOrderUseCase(
 		basketRepo:       basketRepo,
 		orderProductRepo: orderProductRepo,
 		productRepo:      productRepo,
+		deviceTokenRepo:  deviceTokenRepo,
+		firebaseService:  firebaseService,
 		logger:           logger,
 	}
 }
@@ -602,7 +612,7 @@ func (u *OrderUseCase) MarkOrderAsSend(
 		return customError.ErrNotFoundByID(orderID, "order")
 	}
 
-	err = u.repo.MarkOrderAsSend(ctx, orderID)
+	clientID, changed, err := u.repo.MarkOrderAsSend(ctx, orderID)
 	if err != nil {
 		u.logger.Error(
 			"failed to mark order as sent",
@@ -618,5 +628,72 @@ func (u *OrderUseCase) MarkOrderAsSend(
 		log.Int("order_id", orderID),
 	)
 
+	// Push is sent in the background: the admin's request must not wait for
+	// (or fail because of) Firebase. Only on the first change, so pressing
+	// "sent" twice does not notify the client twice.
+	if changed {
+		go u.notifyOrderSent(orderID, clientID)
+	}
+
 	return nil
+}
+
+// notifyOrderSent pushes "your order has been sent" to every phone of the
+// client. Tapping it opens the order in the app (route + order_id).
+func (u *OrderUseCase) notifyOrderSent(orderID int, clientID int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	tokens, err := u.deviceTokenRepo.GetDeviceTokensByClientID(ctx, clientID)
+	if err != nil {
+		u.logger.Error("failed to get client device tokens",
+			log.Int("order_id", orderID),
+			log.Int("client_id", clientID),
+			log.Error(err),
+		)
+		return
+	}
+	if len(tokens) == 0 {
+		u.logger.Info("client has no device tokens, order push skipped",
+			log.Int("order_id", orderID),
+			log.Int("client_id", clientID),
+		)
+		return
+	}
+
+	response, err := u.firebaseService.SendToTokens(
+		ctx,
+		tokens,
+		"Sargydyňyz iberildi",
+		fmt.Sprintf("№%d sargydyňyz size tarap ýola çykdy", orderID),
+		map[string]string{
+			"route":    "/order_detail",
+			"order_id": fmt.Sprint(orderID),
+		},
+	)
+	if err != nil {
+		u.logger.Error("failed to send order push",
+			log.Int("order_id", orderID),
+			log.Error(err),
+		)
+		return
+	}
+
+	// Tokens of uninstalled apps are removed so they are not used again.
+	var invalid []string
+	for i, r := range response.Responses {
+		if r.Error != nil && (messaging.IsUnregistered(r.Error) ||
+			messaging.IsInvalidArgument(r.Error)) {
+			invalid = append(invalid, tokens[i])
+		}
+	}
+	if err := u.deviceTokenRepo.DeleteDeviceTokens(ctx, invalid); err != nil {
+		u.logger.Error("failed to delete invalid device tokens", log.Error(err))
+	}
+
+	u.logger.Info("order push sent",
+		log.Int("order_id", orderID),
+		log.Int("success", response.SuccessCount),
+		log.Int("failure", response.FailureCount),
+	)
 }

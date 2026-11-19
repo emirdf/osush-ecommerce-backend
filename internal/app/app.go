@@ -74,6 +74,7 @@ func Run(logger log.Logger) error {
 	bannerRepo := repository.NewBannerRepository(database, logger)
 	deviceTokenRepo := repository.NewDeviceTokenRepository(database, logger)
 	notificationRepo := repository.NewNotificationRepository(database, logger)
+	feedbackRepo := repository.NewFeedbackRepository(database, logger)
 
 	authUseCase := usecase.NewAuthUseCase(
 		authRepo, minioRepo, categoryRepo, productRepo, clientRepo, orderProductsRepo, logger)
@@ -84,11 +85,12 @@ func Run(logger log.Logger) error {
 		productRepo, subcategoryRepo, minioRepo, clientRepo,
 		productLikeRepo, orderProductsRepo, logger)
 	basketUseCase := usecase.NewBasketUseCase(basketRepo, productRepo, clientRepo, logger)
-	orderUseCase := usecase.NewOrderUseCase(orderRepo, clientRepo, basketRepo, orderProductsRepo, productRepo, logger)
+	orderUseCase := usecase.NewOrderUseCase(orderRepo, clientRepo, basketRepo, orderProductsRepo, productRepo, deviceTokenRepo, firebaseService, logger)
 	productLikeUseCase := usecase.NewProductLikeUseCase(productLikeRepo, clientRepo, productRepo, logger)
 	bannerUseCase := usecase.NewBannerUseCase(bannerRepo, minioRepo, logger)
 	deviceTokenUseCase := usecase.NewDeviceTokenUseCase(deviceTokenRepo, logger)
 	notificationUseCase := usecase.NewNotificationUseCase(notificationRepo, deviceTokenRepo, firebaseService, logger)
+	feedbackUseCase := usecase.NewFeedbackUseCase(feedbackRepo, logger)
 
 	authHandler := handlers.NewAuthHandler(cfg, authUseCase, logger)
 	clientHandler := handlers.NewClientHandler(cfg, clientUseCase, logger)
@@ -101,6 +103,7 @@ func Run(logger log.Logger) error {
 	bannerHandler := handlers.NewBannerHandler(cfg, bannerUseCase, logger)
 	deviceTokenHandler := handlers.NewDeviceTokenHandler(cfg, deviceTokenUseCase, logger)
 	notificationHandler := handlers.NewNotificationHandler(cfg, notificationUseCase, logger)
+	feedbackHandler := handlers.NewFeedbackHandler(cfg, feedbackUseCase, logger)
 
 	cleanNotificationJob := job.NewCleanNotificationJob(notificationUseCase, logger)
 
@@ -116,6 +119,7 @@ func Run(logger log.Logger) error {
 		BannerHandler:       bannerHandler,
 		DeviceTokenHandler:  deviceTokenHandler,
 		NotificationHandler: notificationHandler,
+		FeedbackHandler:     feedbackHandler,
 		HealthChecker:       healthChecker,
 
 		ClientRepository: clientRepo,
