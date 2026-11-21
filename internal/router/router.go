@@ -24,6 +24,7 @@ type RouterDeps struct {
 	DeviceTokenHandler  *handlers.DeviceTokenHandler
 	NotificationHandler *handlers.NotificationHandler
 	FeedbackHandler     *handlers.FeedbackHandler
+	AppVersionHandler   *handlers.AppVersionHandler
 	HealthChecker       *telemetry.HealthChecker
 	ClientRepository    *repository.ClientRepository
 }
@@ -312,6 +313,24 @@ func NewRouter(cfg *config.Config, logger log.Logger, deps *RouterDeps) *gin.Eng
 			InternalMiddlewarePkg.AdminOnly(cfg, deps.ClientRepository),
 			InternalMiddlewarePkg.BodySizeLimit(1*1024*1024),
 			deps.FeedbackHandler.DeleteFeedback)
+	}
+
+	{
+		appVersion := v1.Group("/app-version")
+		appVersion.GET(
+			"",
+			InternalMiddlewarePkg.BodySizeLimit(1*1024*1024),
+			deps.AppVersionHandler.CheckAppVersion)
+		appVersion.GET(
+			"/admin",
+			InternalMiddlewarePkg.AdminOnly(cfg, deps.ClientRepository),
+			InternalMiddlewarePkg.BodySizeLimit(1*1024*1024),
+			deps.AppVersionHandler.GetAppVersions)
+		appVersion.PUT(
+			"/admin",
+			InternalMiddlewarePkg.AdminOnly(cfg, deps.ClientRepository),
+			InternalMiddlewarePkg.BodySizeLimit(1*1024*1024),
+			deps.AppVersionHandler.UpdateAppVersion)
 	}
 
 	return r

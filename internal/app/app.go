@@ -75,6 +75,7 @@ func Run(logger log.Logger) error {
 	deviceTokenRepo := repository.NewDeviceTokenRepository(database, logger)
 	notificationRepo := repository.NewNotificationRepository(database, logger)
 	feedbackRepo := repository.NewFeedbackRepository(database, logger)
+	appVersionRepo := repository.NewAppVersionRepository(database, logger)
 
 	authUseCase := usecase.NewAuthUseCase(
 		authRepo, minioRepo, categoryRepo, productRepo, clientRepo, orderProductsRepo, logger)
@@ -91,6 +92,7 @@ func Run(logger log.Logger) error {
 	deviceTokenUseCase := usecase.NewDeviceTokenUseCase(deviceTokenRepo, logger)
 	notificationUseCase := usecase.NewNotificationUseCase(notificationRepo, deviceTokenRepo, firebaseService, logger)
 	feedbackUseCase := usecase.NewFeedbackUseCase(feedbackRepo, logger)
+	appVersionUseCase := usecase.NewAppVersionUseCase(appVersionRepo, logger)
 
 	authHandler := handlers.NewAuthHandler(cfg, authUseCase, logger)
 	clientHandler := handlers.NewClientHandler(cfg, clientUseCase, logger)
@@ -104,6 +106,7 @@ func Run(logger log.Logger) error {
 	deviceTokenHandler := handlers.NewDeviceTokenHandler(cfg, deviceTokenUseCase, logger)
 	notificationHandler := handlers.NewNotificationHandler(cfg, notificationUseCase, logger)
 	feedbackHandler := handlers.NewFeedbackHandler(cfg, feedbackUseCase, logger)
+	appVersionHandler := handlers.NewAppVersionHandler(cfg, appVersionUseCase, logger)
 
 	cleanNotificationJob := job.NewCleanNotificationJob(notificationUseCase, logger)
 
@@ -120,6 +123,7 @@ func Run(logger log.Logger) error {
 		DeviceTokenHandler:  deviceTokenHandler,
 		NotificationHandler: notificationHandler,
 		FeedbackHandler:     feedbackHandler,
+		AppVersionHandler:   appVersionHandler,
 		HealthChecker:       healthChecker,
 
 		ClientRepository: clientRepo,
